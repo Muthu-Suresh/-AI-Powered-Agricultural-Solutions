@@ -1,0 +1,88 @@
+import pandas as pd
+import numpy as np
+import speech_recognition as sr
+from fuzzywuzzy import process
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.tree import DecisionTreeClassifier
+
+# Load Dataset
+df = pd.read_csv("C:/Users/muthu/Downloads/Crop_Disease_Pesticide_Fertilizer.csv")
+
+# Rename column if necessary
+if "Fertilizer Recommendation" in df.columns:
+    df.rename(columns={"Fertilizer Recommendation": "Recommended_Fertilizer"}, inplace=True)
+
+# Encode categorical values
+label_encoders = {}
+for column in ["Crop", "Symptoms", "Disease", "Recommended Pesticide", "Recommended_Fertilizer"]:
+    le = LabelEncoder()
+    df[column] = le.fit_transform(df[column])
+    label_encoders[column] = le
+
+# Define features (X) and target (y)
+X = df[["Crop", "Symptoms"]]
+y = df["Disease"]
+
+# Split dataset
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Train Decision Tree model
+model = DecisionTreeClassifier()
+model.fit(X_train, y_train)
+# Speech Recognition function
+def get_voice_input(prompt_text):
+    recognizer = sr.Recognizer()
+    with sr.Microphone() as source:
+        print(prompt_text)
+        recognizer.adjust_for_ambient_noise(source)
+        audio = recognizer.listen(source)
+
+        try:
+            text = recognizer.recognize_google(audio)
+            return text.lower()
+        except sr.UnknownValueError:
+            print("Could not recognize input. Please try again.")
+            return None
+        except sr.RequestError:
+            print("Error with the speech recognition service.")
+            return None
+
+# Get Crop Voice Input
+crop_input = None
+while crop_input is None:
+    crop_input = get_voice_input("Speak the crop name:")
+
+# Match crop with dataset
+crop_match, _ = process.extractOne(crop_input, label_encoders["Crop"].classes_)
+crop_encoded = label_encoders["Crop"].transform([crop_match])[0]
+
+# Get Symptoms Voice Input
+symptom_input = None
+while symptom_input is None:
+    symptom_input = get_voice_input("Speak the symptoms:")
+
+# Match symptoms with dataset
+symptom_match, _ = process.extractOne(symptom_input, label_encoders["Symptoms"].classes_)
+symptom_encoded = label_encoders["Symptoms"].transform([symptom_match])[0]
+
+# Predict Disease
+predicted_disease = model.predict([[crop_encoded, symptom_encoded]])[0]
+disease_name = label_encoders["Disease"].inverse_transform([predicted_disease])[0]
+
+# Retrieve Recommendations
+row = df[df["Disease"] == predicted_disease].iloc[0]
+recommended_pesticide = label_encoders["Recommended Pesticide"].inverse_transform([row["Recommended Pesticide"]])[0]
+recommended_fertilizer = label_encoders["Recommended_Fertilizer"].inverse_transform([row["Recommended_Fertilizer"]])[0]
+dosage_application = row["Dosage & Application"]
+weather_conditions = row["Weather Conditions"]
+
+# Output Results
+print("\n✅ **Diagnosis Complete!**")
+print(f"🔹 Crop: {crop_match}")
+print(f"🔹 Symptoms: {symptom_match}")
+print(f"🔹 Disease: {disease_name}")
+print(f"🛠 Recommended Pesticide: {recommended_pesticide}")
+print(f"📌 Dosage & Application: {dosage_application}")
+print(f"☁️ Weather Conditions: {weather_conditions}")
+print(f"🌱 Recommended Fertilizer: {recommended_fertilizer}")
